@@ -3,6 +3,12 @@ extends lib/layout
 block content
   #app
     .title(v-text="title")
+    input(v-model="soojin")
+    button(@click="test")="test"
+    .text(v-text="soojin")
+    input(v-model="hyungjun")
+    button(@click="test2")="test2"
+    .text(v-text="hyungjun")
 
 block script
   script(src="/javascripts/index.js")
