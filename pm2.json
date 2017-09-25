@@ -1,0 +1,9 @@
+{
+  "name": "GoKaku",
+  "script": "./bin/www",
+  "out_file": "logs/out.log",
+  "error_file": "logs/error.log",
+  "env": {
+    "TZ": "UTC"
+  }
+}

@@ -1,0 +1,51 @@
+version: '2'
+
+services:
+  mysql:
+    image: mysql:5.6.26
+    container_name: mysql
+    volumes:
+      - ./mysql-initdb.d/charset.cnf:/etc/mysql/conf.d/charset.cnf
+      - ./mysql-initdb.d/01_create_db.sh:/docker-entrypoint-initdb.d/01_create_db.sh 
+      - ./mysql-initdb.d/sql:/sql
+    ports:
+      - 3307:3306
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "true"
+      MYSQL_USER: "remoteusr"
+      MYSQL_PASSWORD: "password"
+    restart: always
+
+  redis:
+    image: redis:3.0.3
+    container_name: redis
+    restart: always
+
+  app:
+    image: docker-app
+    build: ./docker-app
+    container_name: app
+    tty: true
+    ports:
+      - 3000:3000
+    links:
+      - mysql
+      - redis
+    volumes:
+      - ./ssh:/root/.ssh
+      - ./../:/app
+      - ./docker-app/run.sh:/run.sh
+    depends_on:
+      - mysql
+      - redis
+    restart: always
+
+  nginx:
+    image: docker-nginx
+    build: ./docker-nginx
+    container_name: nginx
+    ports:
+      - 80:80
+    links:
+      - app
+    restart: always
