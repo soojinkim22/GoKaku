@@ -32,7 +32,6 @@ services:
       - mysql
       - redis
     volumes:
-      - ./ssh:/root/.ssh
       - ./../:/app
       - ./docker-app/run.sh:/run.sh
     depends_on:
