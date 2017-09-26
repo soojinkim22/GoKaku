@@ -3,10 +3,9 @@ function command_exists {
   command -v "$1" > /dev/null;
 }
 
-NPM_VERSION="$(npm --version)"
-if [[ "$NPM_VERSION" < 5 ]]; then
-  echo "upgrade npm..."
-  npm install -g npm@5
+if ! command_exists pm2 ; then
+  echo "installing pm2..."
+  npm install -g pm2
 fi
 
 if [ -e /app/node_modules ]; then
@@ -18,4 +17,4 @@ else
   ln -s /tmp/node_modules /app/.
 fi
 
-cd /app && npm start
+cd /app && node bin/www
