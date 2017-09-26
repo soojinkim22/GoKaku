@@ -2,13 +2,20 @@ extends lib/layout
 
 block content
   #app
-    .title(v-text="title")
-    input(v-model="soojin")
-    button(@click="test")="test"
-    .text(v-text="soojin")
-    input(v-model="hyungjun")
-    button(@click="test2")="test2"
-    .text(v-text="hyungjun")
+    .container
+      .row
+        .h2.title(v-text='title')
+      .row
+        .col-sm-4
+          .input-group
+            span.input-group-addon(id='basic-addon1') @
+            input.form-control(v-model='username' placeholder="여기를 수정해보세요")
+        .col-sm-4  
+          .input-group
+            span.input-group-addon(id='basic-addon1') @
+            input.form-control(v-model='password' type='password' placeholder="*********")
+        .col-sm-4
+            button.btn.btn-primary(v-on:click="login") 로그인
 
 block script
-  script(src="/javascripts/index.js")
+  script(src='/javascripts/index.js')
