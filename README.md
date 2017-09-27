@@ -7,6 +7,12 @@ $ npm install -g pm2
 $ npm install
 ```
 
+## Start development
+
+```
+$ npm run dev
+```
+
 ## Start production
 
 ```
