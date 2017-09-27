@@ -3,20 +3,20 @@
 mysql=( mysql --protocol=socket -uroot )
 
 "${mysql[@]}" <<-EOSQL
-  CREATE DATABASE IF NOT EXISTS ophis;
-  GRANT ALL ON ophis.* TO '${MYSQL_USER}'@'%' ;
-  CREATE DATABASE IF NOT EXISTS umi;
-  GRANT ALL ON umi.* TO '${MYSQL_USER}'@'%' ;
+  CREATE DATABASE IF NOT EXISTS history;
+  GRANT ALL ON history.* TO '${MYSQL_USER}'@'%' ;
+  CREATE DATABASE IF NOT EXISTS manager;
+  GRANT ALL ON manager.* TO '${MYSQL_USER}'@'%' ;
 EOSQL
 
 cd /docker-entrypoint-initdb.d/
 
-if [ -e ./${OPHIS_DUMP_FILENAME} ]; then
-  echo "import ophis from ${OPHIS_DUMP_FILENAME}..."
-  mysql --protocol=socket -u${MYSQL_USER} -p${MYSQL_PASSWORD} ophis < /sql/ophis.sql
+if [ -e ./${HISTORY_DUMP_FILENAME} ]; then
+  echo "import history from ${HISTORY_DUMP_FILENAME}..."
+  mysql --protocol=socket -u${MYSQL_USER} -p${MYSQL_PASSWORD} history < /sql/history.sql
 fi
 
-if [ -e ./${UMI_DUMP_FILENAME} ]; then
-  echo "import umi from ${UMI_DUMP_FILENAME}..."
-  mysql --protocol=socket -u${MYSQL_USER} -p${MYSQL_PASSWORD} umi < /sql/umi.sql
+if [ -e ./${MANAGER_DUMP_FILENAME} ]; then
+  echo "import manager from ${MANAGER_DUMP_FILENAME}..."
+  mysql --protocol=socket -u${MYSQL_USER} -p${MYSQL_PASSWORD} manager < /sql/manager.sql
 fi
