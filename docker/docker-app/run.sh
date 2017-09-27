@@ -17,4 +17,4 @@ else
   ln -s /tmp/node_modules /app/.
 fi
 
-cd /app && node bin/www
+cd /app && npm run dev

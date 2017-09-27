@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "start": "pm2 start pm2.json",
-    "stop": "pm2 stop pm2.json"
+    "stop": "pm2 stop pm2.json",
+    "dev": "nodemon ./bin/www --watch src/routes --watch src/app.js"
   },
   "dependencies": {
     "body-parser": "~1.17.1",
@@ -14,5 +15,8 @@
     "jade": "~1.11.0",
     "morgan": "~1.8.1",
     "serve-favicon": "~2.4.2"
+  },
+  "devDependencies": {
+    "nodemon": "^1.12.1"
   }
 }
