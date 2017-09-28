@@ -9,6 +9,7 @@ var index = require('./routes/index');
 var users = require('./routes/users');
 var routes = require('./routes');
 var app = express();
+var mysql = require("./routes/lib/mysql");
 
 // view engine setup
 app.set('views', path.join(__dirname, './views'));
@@ -22,6 +23,8 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// MySQL 初期化
+mysql.init();
 
 app.use('/', index);
 
