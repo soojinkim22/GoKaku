@@ -32,6 +32,7 @@ ENGINE = InnoDB
 ROW_FORMAT = COMPRESSED
 COMMENT = 'ユーザーマスタ：ユーザーアカウントを管理するマスタテーブル';
 
+
 -- -----------------------------------------------------
 -- Type      : Table
 -- database  : manager
@@ -451,6 +452,536 @@ CREATE PROCEDURE `manager`.`SP_UpsertUser` (
 DELIMITER ;
 
 
+-- -----------------------------------------------------
+-- Type      : stored procedure
+-- database  : manager
+-- name      : SP_MOD_DeleteUser
+-- version   : 0.1 @2017/09/30
+-- -----------------------------------------------------
+
+DROP PROCEDURE IF EXISTS `manager`.`SP_MOD_DeleteUser` ;
+
+DELIMITER //
+
+CREATE PROCEDURE `manager`.`SP_MOD_DeleteUser` (
+				IN	inUserID			MEDIUMINT,
+				IN	inEditBy			VARCHAR(64),
+				OUT	outCode				INT,			--	INTで統一
+				OUT	outMsg				VARCHAR(256)
+				)
+	BEGIN
+		--	ローカル変数宣言
+		DECLARE _cOpType		CHAR(3);
+		DECLARE _sqlState		CHAR(5);
+		DECLARE	_errMsg			VARCHAR(256);
+
+		--	警告をハンドル、例外時はCONTINUE
+		DECLARE CONTINUE HANDLER FOR SQLWARNING SET outMsg = '[SP_MOD_DeleteUser] Warning.' ;
+		--	エラーをハンドル、例外時はEXIT
+		DECLARE EXIT HANDLER FOR SQLEXCEPTION
+			BEGIN
+				GET DIAGNOSTICS CONDITION 1 _sqlState = RETURNED_SQLSTATE, _errMsg = MESSAGE_TEXT;
+				SET outCode = -9;
+				SET outMsg	= CONCAT('[SP_MOD_DeleteUser] DB error. SQLSTATE: ', IFNULL(_sqlState, ''), '. ', IFNULL(_errMsg, ''));
+				--	ROLLBACK;
+			END;
+
+		--	変数初期化
+		SET outCode		= 0;
+		SET _cOpType	= 'del';
+
+		--	必須チェック
+		IF	inEditBy IS NULL OR CHAR_LENGTH(TRIM(inEditBy)) = 0 THEN
+			SET outCode = -1;
+			SET outMsg	= '[SP_MOD_DeleteUser] Required parameter. inEditBy';
+		--	形式チェック
+		--	存在チェック
+		--	重複チェック
+		END IF;
+
+		--	処理本体
+		--	START TRANSACTION;	モジュールとして、TRANSACTIONは外部の呼び出し元ROUTINEに委ねる
+		IF	outCode >= 0 THEN
+			IF	inUserID IS NOT NULL THEN
+				--	一件削除モード
+				--	存在判定（やらないと存在しないときは履歴更新でエラーとなる）
+				IF	NOT EXISTS ( SELECT nUserID FROM M_User WHERE nUserID = inUserID ) THEN
+					SET outCode	= -3;
+					SET outMsg	= CONCAT('[SP_MOD_DeleteUser] Inconsistent value. inUserID = ', inUserID, ' is not exists.');
+				END IF;
+
+				IF	outCode >= 0 THEN
+					--	履歴登録（nCorpIDは無視）
+					CALL	SP_MOD_InsertUserHistory(inUserID, _cOpType, inEditBy, @hisOutCode, @hisOutMsg) ;
+					IF	@hisOutCode > 0 THEN
+						--	一件削除（nCorpIDは無視）
+						DELETE FROM M_User
+						WHERE nUserID = inUserID ;
+
+						IF	ROW_COUNT() = 0 THEN
+							SET outCode	= -3;
+							SET outMsg	= CONCAT('[SP_MOD_DeleteUser] Inconsistent value. inUserID = ', inUserID);
+						ELSE
+							SET outCode	= ROW_COUNT();
+						END IF;
+					ELSE
+						SET outCode	= -8;
+						SET outMsg	= CONCAT('[SP_MOD_DeleteUser] History update error. ', @hisOutMsg);
+					END IF;
+
+				END IF;
+			END IF;
+		END IF;
+
+	END;
+//
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- Type      : stored procedure
+-- database  : manager
+-- name      : SP_DeleteUser
+-- version   : 0.1 @2017/09/30
+-- -----------------------------------------------------
+
+DROP PROCEDURE IF EXISTS `manager`.`SP_DeleteUser` ;
+
+DELIMITER //
+
+CREATE PROCEDURE `manager`.`SP_DeleteUser` (
+				IN	inUserID			MEDIUMINT,
+				IN	inEditBy			VARCHAR(64),
+				OUT	outCode				INT,			--	INTで統一
+				OUT	outMsg				VARCHAR(256)
+				)
+	BEGIN
+		--	ローカル変数宣言
+		DECLARE _sqlState		CHAR(5);
+		DECLARE	_errMsg			VARCHAR(256);
+
+		--	警告をハンドル、例外時はCONTINUE
+		DECLARE CONTINUE HANDLER FOR SQLWARNING SET outMsg = '[SP_DeleteUser] Warning.' ;
+		--	エラーをハンドル、例外時はEXIT
+		DECLARE EXIT HANDLER FOR SQLEXCEPTION
+			BEGIN
+				GET DIAGNOSTICS CONDITION 1 _sqlState = RETURNED_SQLSTATE, _errMsg = MESSAGE_TEXT;
+				SET outCode = -9;
+				SET outMsg	= CONCAT('[SP_DeleteUser] DB error. SQLSTATE: ', IFNULL(_sqlState, ''), '. ', IFNULL(_errMsg, ''));
+				--	運用上、safe_update モードは戻しておく（このセッションだけ有効かもしれないが・・・）
+				SET @@sql_safe_updates	=	1;
+				ROLLBACK;
+			END;
+
+		--	変数初期化
+		SET outCode		= 0;
+
+		--	キー更新できない可能性があるので、safe_updates をOFFる。
+		SET @@sql_safe_updates	=	0;
+
+		--	必須チェック
+		IF	inEditBy IS NULL OR CHAR_LENGTH(TRIM(inEditBy)) = 0 THEN
+			SET outCode = -1;
+			SET outMsg	= '[SP_DeleteUser] Required parameter. inEditBy';
+		--	形式チェック
+		--	存在チェック
+		--	重複チェック
+		END IF;
+
+		--	処理本体
+		IF	outCode >= 0 THEN
+			START TRANSACTION;
+			--	処理モジュールへ
+			CALL	SP_MOD_DeleteUser(inUserID, inEditBy, @modOutCode, @modOutMsg) ;
+				SET outCode	= @modOutCode;
+				SET outMsg	= @modOutMsg;
+
+			--	トランザクション処理（0は含まない）
+			IF	outCode > 0 THEN
+				COMMIT;
+			ELSE
+				ROLLBACK;
+			END IF;
+
+		END IF;
+
+		--	運用上、safe_update モードは戻しておく（このセッションだけ有効かもしれないが・・・）
+		SET @@sql_safe_updates	=	1;
+
+	END;
+//
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- Type      : stored procedure
+-- database  : manager
+-- name      : SP_ActivateUser
+-- version   : 0.1 @2017/09/30
+-- -----------------------------------------------------
+
+DROP PROCEDURE IF EXISTS `manager`.`SP_ActivateUser` ;
+
+DELIMITER //
+
+CREATE PROCEDURE `manager`.`SP_ActivateUser` (
+				IN	inUserID		INT,
+				IN	inLogin			VARCHAR(64),
+				IN	inPassword		VARCHAR(64),
+				IN	inPIN			VARCHAR(8),
+				IN	inName			VARCHAR(64),
+				IN	inEditBy		VARCHAR(64),
+				OUT	outCode			INT,			--	INTで統一
+				OUT	outMsg			VARCHAR(256)
+				)
+	BEGIN
+		--	ローカル変数宣言
+		DECLARE _cOpType		CHAR(3);
+		DECLARE _sqlState		CHAR(5);
+		DECLARE	_errMsg			VARCHAR(256);
+
+		--	警告をハンドル、例外時はCONTINUE
+		DECLARE CONTINUE HANDLER FOR SQLWARNING SET outMsg = '[SP_ActivateUser] Warning.' ;
+		--	エラーをハンドル、例外時はEXIT
+		DECLARE EXIT HANDLER FOR SQLEXCEPTION
+			BEGIN
+				GET DIAGNOSTICS CONDITION 1 _sqlState = RETURNED_SQLSTATE, _errMsg = MESSAGE_TEXT;
+				SET outCode = -9;
+				SET outMsg	= CONCAT('[SP_ActivateUser] DB error. SQLSTATE: ', IFNULL(_sqlState, ''), '. ', IFNULL(_errMsg, ''));
+				--	ROLLBACK;
+			END;
+
+		--	変数初期化
+		SET outCode		= 0;
+		SET _cOpType	= 'upd';
+
+		--	必須チェック
+		IF	inUserID IS NULL OR inLogin IS NULL OR inName IS NULL OR inEditBy IS NULL OR
+				CHAR_LENGTH(TRIM(inLogin)) = 0 OR CHAR_LENGTH(TRIM(inName)) = 0 OR CHAR_LENGTH(TRIM(inEditBy)) = 0 THEN
+			SET outCode = -1;
+			SET outMsg	= '[SP_ActivateUser] Required parameter. inUserID, inLogin, inName and inEditBy';
+		--	形式チェック
+		--	存在チェック
+		--	重複チェック
+		END IF;
+
+		--	処理本体
+		IF	outCode >= 0 THEN
+			--	ユーザー情報照合
+			IF	EXISTS ( SELECT nUserID FROM V_User 
+										WHERE
+											nUserID		=	inUserID
+										AND	vcLogin		=	TRIM(inLogin)
+										AND	vcName		=	TRIM(inName)
+										AND IFNULL(vcPIN, 'N/A')	=	IFNULL(TRIM(inPIN), IFNULL(vcPIN, 'N/A'))
+						) THEN
+				--	アクティベート成功
+				START TRANSACTION;
+				--	情報更新
+				UPDATE M_User SET
+					--	パスワード変更トラップを vcPassword の設定前に
+					dtPwModified	=	CASE WHEN IFNULL(vcPassword, 'N/A') <> IFNULL(MD5(inPassword), IFNULL(vcPassword, 'N/A')) THEN CURRENT_TIMESTAMP ELSE dtPwModified END,
+					vcPassword		=	CASE WHEN IFNULL(vcPassword, 'N/A') <> IFNULL(MD5(inPassword), IFNULL(vcPassword, 'N/A')) THEN MD5(inPassword) ELSE vcPassword END,
+					dtActivate		=	CURRENT_TIMESTAMP,
+					nLoginFailed 	=	0,
+					dtUpdate		=	CURRENT_TIMESTAMP,
+					vcEditBy		=	inEditBy
+				WHERE
+					nUserID			=	inUserID ;
+
+				--	これはケースとしては発生し得ない・・・。
+				IF	ROW_COUNT() = 0 THEN
+					SET outCode		= -5;
+					SET outMsg		= CONCAT('[SP_ActivateUser] Activation succeeds but no data has updated. inUserID = ', inUserID, ', inLogin = ', inLogin);
+				ELSE
+					SET outCode		= inUserID;
+				END IF;
+
+				--	nUserID がセットされている場合のみ
+				IF	outCode > 0 THEN
+					--	履歴投入
+					CALL	SP_MOD_InsertUserHistory(outCode, _cOpType, inEditBy, @hisOutCode, @hisOutMsg);
+					IF	@hisOutCode < 0 THEN
+						SET outCode	= -8;
+						SET outMsg	= CONCAT('[SP_ActivateUser] History update error. ', @hisOutMsg);
+					END IF;
+				END IF;
+
+				--	トランザクション処理
+				IF	outCode > 0 THEN
+					COMMIT;
+				ELSE
+					ROLLBACK;
+				END IF;
+
+			ELSE
+				--	アクティベート失敗
+				SET outCode	= 0;
+				SET outMsg	= CONCAT('[SP_ActivateUser] Activation Failed. inUserID = ', inUserID, ', inLogin = ', inLogin);
+
+			END IF;
+
+		END IF;
+
+	END;
+//
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- Type      : stored procedure
+-- database  : manager
+-- name      : SP_LoginUser
+-- version   : 0.1 @2017/09/30
+-- -----------------------------------------------------
+
+DROP PROCEDURE IF EXISTS `manager`.`SP_LoginUser` ;
+
+DELIMITER //
+
+CREATE PROCEDURE `manager`.`SP_LoginUser` (
+				IN	inLogin			VARCHAR(64),
+				IN	inPassword		VARCHAR(64),
+				IN	inSessionID		VARCHAR(128),
+				IN	inEditBy		VARCHAR(64),
+				OUT	outCode			INT,			--	INTで統一
+				OUT	outName			VARCHAR(64),
+				OUT	outRoleID		CHAR(8),
+				OUT	outRoleKeyName	VARCHAR(64),
+				OUT	outLoginFailed	TINYINT,
+				OUT	outOldSessionID	VARCHAR(128),
+				OUT	outImageURL		VARCHAR(256),
+				OUT	outMsg			VARCHAR(256)
+				)
+	BEGIN
+		--	ローカル変数宣言
+		DECLARE _cOpType		CHAR(3);
+		DECLARE _sqlState		CHAR(5);
+		DECLARE	_errMsg			VARCHAR(256);
+
+		--	警告をハンドル、例外時はCONTINUE
+		DECLARE CONTINUE HANDLER FOR SQLWARNING SET outMsg = '[SP_LoginUser] Warning.' ;
+		--	エラーをハンドル、例外時はEXIT
+		DECLARE EXIT HANDLER FOR SQLEXCEPTION
+			BEGIN
+				GET DIAGNOSTICS CONDITION 1 _sqlState = RETURNED_SQLSTATE, _errMsg = MESSAGE_TEXT;
+				SET outCode = -9;
+				SET outMsg	= CONCAT('[SP_LoginUser] DB error. SQLSTATE: ', IFNULL(_sqlState, ''), '. ', IFNULL(_errMsg, ''));
+				--	運用上、safe_updae モードは戻しておく（このセッションだけ有効かもしれないが・・・）
+				SET @@sql_safe_updates	=	1;
+				ROLLBACK;
+			END;
+
+		--	変数初期化
+		SET outCode		= 0;
+		SET _cOpType	= 'upd';
+
+		--	キー更新できない可能性があるので、safe_updates をOFFる。
+		SET @@sql_safe_updates	=	0;
+
+		--	必須チェック
+		IF	inLogin IS NULL OR inEditBy IS NULL OR
+				CHAR_LENGTH(TRIM(inLogin)) = 0 OR CHAR_LENGTH(TRIM(inEditBy)) = 0 THEN
+			SET outCode	= -1;
+			SET outMsg	= '[SP_LoginUser] Required parameter. inLogin and inEditBy';
+		--	形式チェック
+		--	存在チェック
+		--	重複チェック
+		END IF;
+
+		--	処理本体
+		IF	outCode >= 0 THEN
+			--	ログイン情報照合と out パラメータセット
+			SELECT
+				nUserID,
+				vcName,
+				cRoleID,
+				vcRoleKeyName,
+				nLoginFailed,
+				vcSessionID,
+				vcImageURL
+			INTO
+				outCode,
+				outName,
+				outRoleID,
+				outRoleKeyName,
+				outLoginFailed,
+				outOldSessionID,
+				outImageURL	
+			FROM	V_User
+			WHERE	vcLogin		=	inLogin
+				AND	vcPassword	=	MD5(inPassword)
+				AND	dtActivate	IS NOT NULL
+			;
+
+			--	SELECT ... INTO では返り値がなかった場合は何も操作されない（0が返ってきたので少なくともNULLではない）ようだ。。
+			IF	IFNULL(outCode, 0) = 0 THEN
+				--	ログイン失敗
+				SET outCode	= 0;
+				SET outMsg	= CONCAT('[SP_LoginUser] Login Failed, inLogin = ', inLogin);
+
+				--	ログイン失敗情報更新
+				UPDATE M_User
+					SET
+--						nLoginFlg		=	0,
+						nLoginFailed 	=	nLoginFailed + 1,
+						dtUpdate		=	CURRENT_TIMESTAMP,
+						vcEditBy		=	inEditBy
+					WHERE
+						vcLogin			=	inLogin
+					AND	dtActivate	IS NOT NULL ;
+
+				--	ログイン失敗時は nUserID が判別不能なため、履歴格納はできない。。
+				--	上記の条件でマッチしたアカウントの nLoginFailed がカウントアップされるだけ、とする
+				--	履歴操作に及ばない単一クエリのため、トランザクションは張らない
+
+				IF ROW_COUNT() > 0 THEN
+					--	更新成功時は nLoginFailed を取得
+					SELECT
+						nLoginFailed
+					INTO
+						outLoginFailed
+					FROM M_User
+					WHERE
+						vcLogin		=	inLogin
+					AND	dtActivate	IS NOT NULL ;
+				END IF;
+
+			ELSE
+				--	ログイン成功
+				START TRANSACTION;
+				--	ログイン成功情報更新
+				UPDATE M_User SET
+					dtLastLogin		=	CURRENT_TIMESTAMP,
+					nLoginFlg		=	1,
+					vcSessionID		=	TRIM(inSessionID),
+					nLoginFailed 	=	0,
+					dtUpdate		=	CURRENT_TIMESTAMP,
+					vcEditBy		=	inEditBy
+				WHERE
+					nUserID			=	outCode ;
+
+				--	outLoginFailed をクリア
+				SET	outLoginFailed	=	0;
+
+				--	これはケースとしては発生し得ない・・・。
+				IF	ROW_COUNT() = 0 THEN
+					SET outMsg		= CONCAT('[SP_LoginUser] Login succeeds but no data has updated. inLogin = ', inLogin, ', nUserID = ', outCode);
+					SET outCode		= -5;
+				END IF;
+
+				--	nUserID がセットされている場合のみ
+				IF	outCode > 0 THEN
+					--	履歴投入
+					CALL	SP_MOD_InsertUserHistory(outCode, _cOpType, inEditBy, @hisOutCode, @hisOutMsg);
+					IF	@hisOutCode < 0 THEN
+						SET outCode	= -8;
+						SET outMsg	= CONCAT('[SP_LoginUser] History update error. ', @hisOutMsg);
+					END IF;
+				END IF;
+
+			END IF;
+
+		END IF;
+
+		--	運用上、safe_updae モードは戻しておく（このセッションだけ有効かもしれないが・・・）
+		SET @@sql_safe_updates	=	1;
+
+	END;
+//
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- Type      : stored procedure
+-- database  : manager
+-- name      : SP_LogoutUser
+-- version   : 0.1 @2017/09/30
+-- -----------------------------------------------------
+
+DROP PROCEDURE IF EXISTS `manager`.`SP_LogoutUser` ;
+
+DELIMITER //
+
+CREATE PROCEDURE `manager`.`SP_LogoutUser` (
+				IN	inUserID		MEDIUMINT,
+				IN	inEditBy		VARCHAR(64),
+				OUT	outCode			INT,			--	INTで統一
+				OUT	outMsg			VARCHAR(256)
+				)
+	BEGIN
+		--	ローカル変数宣言
+		DECLARE _cOpType		CHAR(3);
+		DECLARE _sqlState		CHAR(5);
+		DECLARE	_errMsg			VARCHAR(256);
+
+		--	警告をハンドル、例外時はCONTINUE
+		DECLARE CONTINUE HANDLER FOR SQLWARNING SET outMsg = '[SP_LogoutUser] Warning.' ;
+		--	エラーをハンドル、例外時はEXIT
+		DECLARE EXIT HANDLER FOR SQLEXCEPTION
+			BEGIN
+				GET DIAGNOSTICS CONDITION 1 _sqlState = RETURNED_SQLSTATE, _errMsg = MESSAGE_TEXT;
+				SET outCode = -9;
+				SET outMsg	= CONCAT('[SP_LogoutUser] DB error. SQLSTATE: ', IFNULL(_sqlState, ''), '. ', IFNULL(_errMsg, ''));
+				ROLLBACK;
+			END;
+
+		--	変数初期化
+		SET outCode		= 0;
+		SET _cOpType	= 'upd';
+
+		--	必須チェック
+		IF	inUserID IS NULL OR inEditBy IS NULL OR CHAR_LENGTH(TRIM(inEditBy)) = 0 THEN
+			SET outCode = -1;
+			SET outMsg	= '[SP_LogoutUser] Required parameter. inUserID and inEditBy';
+		--	形式チェック
+		--	存在チェック
+		--	重複チェック
+		END IF;
+
+		--	処理本体
+		IF	outCode >= 0 THEN
+			START TRANSACTION;
+			--	nLoginFlg のリセット
+			UPDATE M_User SET
+				nLoginFlg		=	0,
+				vcSessionID		=	NULL,
+				dtUpdate		=	CURRENT_TIMESTAMP,
+				vcEditBy		=	inEditBy
+			WHERE
+				nUserID			=	inUserID ;
+
+			IF	ROW_COUNT() = 0 THEN
+				SET outMsg		= CONCAT('[SP_LogoutUser] Inconsistent value. inUserID = ', inUserID);
+				SET outCode		= -3;
+			ELSE
+				SET	outCode		= inUserID;
+			END IF;
+
+			--	成功時のみ
+			IF	outCode > 0 THEN
+				--	履歴投入
+				CALL	SP_MOD_InsertUserHistory(outCode, _cOpType, inEditBy, @hisOutCode, @hisOutMsg);
+				IF	@hisOutCode < 0 THEN
+					SET outCode	= -8;
+					SET outMsg	= CONCAT('[SP_LogoutUser] History update error. ', @hisOutMsg);
+				END IF;
+			END IF;
+
+			--	トランザクション処理
+			IF	outCode > 0 THEN
+				COMMIT;
+			ELSE
+				ROLLBACK;
+			END IF;
+
+		END IF;
+
+	END;
+//
+
+DELIMITER ;
+
 
 /**
 	ユーザ権限登録
@@ -461,4 +992,13 @@ INSERT	IGNORE	INTO	`manager`.`M_Role`
 VALUES ( 'SOOJR001', 'dbRoleValueSOOJR001', '管理権限', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'init-script@docker');
 INSERT	IGNORE	INTO	`manager`.`M_Role`
 VALUES ( 'SOOJR002', 'dbRoleValueSOOJR002', '一般権限', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'init-script@docker');
+
+/**
+	ユーザ登録・アクティベーション
+	vcLogin: test@test.com
+	vcPaasword: test123
+**/
+CALL SP_UpsertUser(null,'test@test.com',null,'テストユーザ','08012340001','test@test.com','テスト用ユーザ',NULL,'SOOJR001','init-script@docker',@outCode,@outMsg);
+SELECT nUserID, vcPIN INTO @nUserID, @vcPIN FROM M_User WHERE vcLogin = 'test@test.com';
+CALL SP_ActivateUser(@nUserID,'test@test.com','test123',@vcPIN,'テストユーザ','init-script@docker',@outCode,@outMsg);
 
